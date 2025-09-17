@@ -1,59 +1,57 @@
 import os
-
-# Import necessary modules from langchain
-from langchain import OpenAI
 from langchain.chains import ConversationalRetrievalChain
-from langchain.embeddings import OpenAIEmbeddings
 from langchain.document_loaders import PyPDFLoader
 from dotenv import load_dotenv
 from langchain.text_splitter import CharacterTextSplitter
 from langchain.vectorstores import Chroma
 
-# Load environment variables
+# For GGUF (local file) via CTransformers:
+from langchain_community.llms import CTransformers
+from langchain.embeddings import HuggingFaceEmbeddings  # Or alternative
+
+# --- For MistralAI API-based inference (uncomment if using web API) ---
+# from mistralai.client import MistralClient
+# from langchain_community.llms import MistralAIEmbeddings
+
 load_dotenv()
 
-# Initialize global variables
+
 conversation_retrieval_chain = None
 chat_history = []
 llm = None
 llm_embeddings = None
 
-# Function to initialize the language model and its embeddings
+
 def init_llm():
     global llm, llm_embeddings
-    # Initialize the language model with the OpenAI API key
-    api_key=os.environ.get('OPENAI_API_KEY')
-    llm = OpenAI(model_name="text-davinci-003", openai_api_key=api_key)
-    # Initialize the embeddings for the language model
-    llm_embeddings = OpenAIEmbeddings(openai_api_key = api_key)
 
-# Function to process a PDF document
+    # LOCAL MISTRAL 7B (GGUF format using CTransformers)
+    llm = CTransformers(
+        model="models/mistral-7b-v0.1.Q4_K_M.gguf",  # Update with your path
+        model_type="llama",
+        max_new_tokens=256,
+        temperature=0.7
+    )
+    # Embeddings: HuggingFace or sentence-transformers models (choose one):
+    llm_embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+
+
+
 def process_document(document_path):
     global conversation_retrieval_chain, llm, llm_embeddings
-    # Load the document
     loader = PyPDFLoader(document_path)
-    
     documents = loader.load()
-    # Split the document into chunks
     text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
     texts = text_splitter.split_documents(documents)
-    # Create a vector store from the document chunks
     db = Chroma.from_documents(texts, llm_embeddings)
-    # Create a retriever interface from the vector store
     retriever = db.as_retriever(search_type="similarity", search_kwargs={"k": 2})
-    # Create a conversational retrieval chain from the language model and the retriever
     conversation_retrieval_chain = ConversationalRetrievalChain.from_llm(llm, retriever)
 
-# Function to process a user prompt
 def process_prompt(prompt):
-    global conversation_retrieval_chain
-    global chat_history
-    # Pass the prompt and the chat history to the conversation_retrieval_chain object
+    global conversation_retrieval_chain, chat_history
     result = conversation_retrieval_chain({"question": prompt, "chat_history": chat_history})
-    chat_history.append((prompt,result["answer"]))
-
-    # Return the model's response
+    # Append prompt and response to chat history
+    chat_history.append((prompt, result['answer']))
     return result['answer']
 
-# Initialize the language model
 init_llm()

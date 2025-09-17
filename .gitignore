@@ -1,2 +1,5 @@
 .env
 server_exercise.py
+worker_old.py
+an_worker.py
+./model
